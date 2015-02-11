@@ -8,6 +8,7 @@ public class Creature {
 
     public int x;
     public int y;
+    public int z;
 
     private char glyph;
 
@@ -25,52 +26,6 @@ public class Creature {
 
     public void setCreatureAi(CreatureAi ai) {
         this.ai = ai;
-    }
-
-    public Creature(World world, char glyph, Color color) {
-        this.world = world;
-        this.glyph = glyph;
-        this.color = color;
-    }
-
-    public void moveBy(int mx, int my) {
-        Creature other = world.creature(x + mx, y + my);
-
-        if (other == null) {
-            ai.onEnter(x + mx, y + my, world.tile(x + mx, y + my));
-        } else {
-            attack(other);
-        }
-    }
-
-    public void dig(int wx, int wy) {
-        world.dig(wx, wy);
-    }
-
-    public void update() {
-        ai.onUpdate();
-    }
-
-    public boolean canEnter(int wx, int wy) {
-        return world.tile(wx, wy).isGround() && world.creature(wx, wy) == null;
-    }
-
-    public void attack(Creature other) {
-        int amount = Math.max(0, attackValue() - other.defenseValue());
-
-        other.modifyHp(-amount);
-
-        notify("You attack the '%s' for %d damage.", other.glyph, amount);
-        other.notify("The '%s' attacks you for %d damage.", glyph, amount);
-        doAction("attack the '%s' for %d damage", other.glyph, amount);
-    }
-
-    public void modifyHp(int amount) {
-        hp += amount;
-
-        if (hp < 1) {
-            world.remove(this);
-        }
     }
 
     private int maxHp;
@@ -107,6 +62,66 @@ public class Creature {
         this.defenseValue = defense;
     }
 
+    public void moveBy(int mx, int my, int mz) {
+        Tile tile = world.tile(x + mx, y + my, z + mz);
+
+        if (mz == -1) {
+            if (tile == Tile.STAIRS_DOWN) {
+                doAction("walk up the stairs to level %d", z + mz + 1);
+            } else {
+                doAction("try to go up but are stopped by the cave ceiling");
+                return;
+            }
+        } else if (mz == 1) {
+            if (tile == Tile.STAIRS_UP) {
+                doAction("walk down the stairs to level %d", z + mz + 1);
+            } else {
+                doAction("try to go down but are stopped by the cave floor");
+                return;
+            }
+        }
+
+        Creature other = world.creature(x + mx, y + my, z + mz);
+
+        if (other == null) {
+            ai.onEnter(x + mx, y + my, z + mz, tile);
+        } else {
+            attack(other);
+        }
+    }
+
+    public void attack(Creature other) {
+        int amount = Math.max(0, attackValue() - other.defenseValue());
+
+        amount = (int) (Math.random() * amount) + 1;
+
+        doAction("attack the '%s' for %d damage", other.glyph, amount);
+
+        other.modifyHp(-amount);
+    }
+
+    public void modifyHp(int amount) {
+        hp += amount;
+
+        if (hp < 1) {
+            doAction("die");
+            world.remove(this);
+        }
+    }
+
+    public void dig(int wx, int wy, int wz) {
+        world.dig(wx, wy, wz);
+        doAction("dig");
+    }
+
+    public void update() {
+        ai.onUpdate();
+    }
+
+    public boolean canEnter(int wx, int wy, int wz) {
+        return world.tile(wx, wy, wz).isGround() && world.creature(wx, wy, wz) == null;
+    }
+
     public void notify(String message, Object... params) {
         ai.onNotify(String.format(message, params));
     }
@@ -119,7 +134,7 @@ public class Creature {
                     continue;
                 }
 
-                Creature other = world.creature(x + ox, y + oy);
+                Creature other = world.creature(x + ox, y + oy, z);
 
                 if (other == null) {
                     continue;
@@ -147,4 +162,35 @@ public class Creature {
         return builder.toString().trim();
     }
 
+    private int visionRadius;
+
+    public int visionRadius() {
+        return visionRadius;
+    }
+
+    public boolean canSee(int wx, int wy, int wz) {
+        if (creature.z != wz) {
+            return false;
+        }
+
+        if ((creature.x - wx) * (creature.x - wx) + (creature.y - wy) * (creature.y - wy) > creature.visionRadius() * creature.visionRadius()) {
+            return false;
+        }
+
+        for (Point p : new Line(creature.x, creature.y, wx, wy)) {
+            if (creature.tile(p.x, p.y, wz).isGround() || p.x == wx && p.y == wy) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+}
+
+public Tile tile(int wx, int wy, int wz) {
+        return world.tile(wx, wy, wz);
+    }
+    
 }
